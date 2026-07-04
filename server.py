@@ -27,7 +27,7 @@ YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
 _cache: dict[tuple[str, str, str], tuple[float, bytes]] = {}
 _screen_lock = threading.Lock()
-_screen_cache: tuple[float, bytes] | None = None
+_screen_cache: tuple[float, dict] | None = None
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -57,6 +57,9 @@ UNIVERSE = [
     ("9101", "日本郵船"), ("9104", "商船三井"), ("5401", "日本製鉄"),
     ("7011", "三菱重工業"), ("7012", "川崎重工業"), ("7013", "IHI"),
     ("8801", "三井不動産"), ("8802", "三菱地所"), ("7741", "HOYA"),
+    # 2024年1月以降の新規上場銘柄 (英字入り新形式コードを含む)
+    ("215A", "タイミー"), ("147A", "ソラコム"), ("268A", "リガクHD"),
+    ("9023", "東京メトロ"),
 ]
 
 
@@ -210,7 +213,7 @@ def evaluate(closes: list[float], volumes: list[float]) -> dict:
     return {"score": score, "reasons": reasons, "rsi": rsi}
 
 
-def build_screen_payload() -> bytes:
+def build_screen_results() -> dict:
     def work(item):
         code, name = item
         try:
@@ -247,24 +250,36 @@ def build_screen_payload() -> bytes:
             if res is not None:
                 results.append(res)
     results.sort(key=lambda r: r["score"], reverse=True)
-    payload = {
+    return {
         "generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
         "scanned": len(UNIVERSE),
         "succeeded": len(results),
-        "top": results[:8],
+        "results": results,
     }
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
-def get_screen() -> bytes:
+def get_screen(max_price: float | None) -> bytes:
     global _screen_cache
     with _screen_lock:
         now = time.time()
         if _screen_cache and now - _screen_cache[0] < SCREEN_TTL_SECONDS:
-            return _screen_cache[1]
-        data = build_screen_payload()
-        _screen_cache = (now, data)
-        return data
+            data = _screen_cache[1]
+        else:
+            data = build_screen_results()
+            _screen_cache = (now, data)
+
+    results = data["results"]
+    if max_price is not None:
+        results = [r for r in results if r["price"] <= max_price]
+    payload = {
+        "generatedAt": data["generatedAt"],
+        "scanned": data["scanned"],
+        "succeeded": data["succeeded"],
+        "maxPrice": max_price,
+        "matched": len(results),
+        "top": results[:8],
+    }
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -277,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_chart(parsed)
             return
         if parsed.path == "/api/screen":
-            self.handle_screen()
+            self.handle_screen(parsed)
             return
         self.serve_static(parsed.path)
 
@@ -305,9 +320,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def handle_screen(self):
+    def handle_screen(self, parsed):
+        query = urllib.parse.parse_qs(parsed.query)
+        max_price_raw = query.get("maxPrice", [None])[0]
+        max_price = None
+        if max_price_raw:
+            try:
+                max_price = float(max_price_raw)
+            except ValueError:
+                self.respond_json(400, {"error": "maxPrice must be a number"})
+                return
+            if max_price <= 0:
+                self.respond_json(400, {"error": "maxPrice must be positive"})
+                return
         try:
-            data = get_screen()
+            data = get_screen(max_price)
         except Exception as e:
             self.respond_json(502, {"error": str(e)})
             return

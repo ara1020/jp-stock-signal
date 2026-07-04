@@ -222,8 +222,10 @@ async function fetchChart(code) {
       volumes.push(volumesRaw[i] || 0);
     }
   }
-  if (closes.length < 26) {
-    throw new Error("分析に必要なデータ量が不足しています");
+  // 上場直後の銘柄は日足が少ないため、最低限チャートと価格表示ができる量だけ要求し、
+  // 計算できない指標(SMA25やRSI等)は evaluate() 側で自動的にスキップされる
+  if (closes.length < 10) {
+    throw new Error("上場直後のためデータが不足しています(10営業日以上で分析可能)");
   }
 
   return {
@@ -274,14 +276,34 @@ async function runScreen() {
   resultsEl.innerHTML = "";
 
   try {
-    const res = await fetch("/api/screen");
+    const maxPriceRaw = document.getElementById("max-price").value.trim();
+    let url = "/api/screen";
+    if (maxPriceRaw) {
+      const maxPrice = Number(maxPriceRaw);
+      if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
+        throw new Error("株価上限は正の数値で入力してください");
+      }
+      url += `?maxPrice=${encodeURIComponent(maxPrice)}`;
+    }
+    const res = await fetch(url);
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
 
     const metaLine = document.createElement("p");
     metaLine.className = "screen-meta";
-    metaLine.textContent = `${json.scanned}銘柄中${json.succeeded}銘柄を採点 (${json.generatedAt} 時点、15分キャッシュ)`;
+    let metaText = `${json.scanned}銘柄中${json.succeeded}銘柄を採点 (${json.generatedAt} 時点、15分キャッシュ)`;
+    if (json.maxPrice != null) {
+      metaText += ` / 株価${Number(json.maxPrice).toLocaleString("ja-JP")}円以下: ${json.matched}銘柄が該当`;
+    }
+    metaLine.textContent = metaText;
     resultsEl.appendChild(metaLine);
+
+    if (json.top.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "screen-meta";
+      empty.textContent = "条件に該当する銘柄がありませんでした。株価上限を上げてみてください。";
+      resultsEl.appendChild(empty);
+    }
 
     json.top.forEach((r, idx) => {
       const v = verdictInfo(r.score);
