@@ -177,6 +177,55 @@ header h1 {
 #run-screen:hover { opacity: 0.9; }
 #run-screen:disabled { opacity: 0.5; cursor: wait; }
 
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.theme-row-label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.theme-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.theme-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #12141a;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.theme-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.theme-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.theme-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(124, 108, 240, 0.15);
+  color: var(--accent);
+  font-size: 0.72rem;
+}
+
 .screener-note {
   color: var(--text-dim);
   font-size: 0.8rem;

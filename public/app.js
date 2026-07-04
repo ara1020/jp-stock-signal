@@ -13,6 +13,7 @@ const state = {
   watchlist: loadWatchlist(),
   dataByCode: {},   // code -> { status: 'loading'|'ok'|'error', analysis, error }
   expanded: {},     // code -> bool
+  selectedTheme: null, // テーマスクリーニングの選択キー (null = 全銘柄)
 };
 
 function loadWatchlist() {
@@ -276,24 +277,31 @@ async function runScreen() {
   resultsEl.innerHTML = "";
 
   try {
+    const params = new URLSearchParams();
     const maxPriceRaw = document.getElementById("max-price").value.trim();
-    let url = "/api/screen";
     if (maxPriceRaw) {
       const maxPrice = Number(maxPriceRaw);
       if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
         throw new Error("株価上限は正の数値で入力してください");
       }
-      url += `?maxPrice=${encodeURIComponent(maxPrice)}`;
+      params.set("maxPrice", String(maxPrice));
     }
-    const res = await fetch(url);
+    if (state.selectedTheme) {
+      params.set("theme", state.selectedTheme);
+    }
+    const qs = params.toString();
+    const res = await fetch("/api/screen" + (qs ? `?${qs}` : ""));
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
 
     const metaLine = document.createElement("p");
     metaLine.className = "screen-meta";
     let metaText = `${json.scanned}銘柄中${json.succeeded}銘柄を採点 (${json.generatedAt} 時点、15分キャッシュ)`;
-    if (json.maxPrice != null) {
-      metaText += ` / 株価${Number(json.maxPrice).toLocaleString("ja-JP")}円以下: ${json.matched}銘柄が該当`;
+    const filters = [];
+    if (json.themeLabel) filters.push(`テーマ「${json.themeLabel}」`);
+    if (json.maxPrice != null) filters.push(`株価${Number(json.maxPrice).toLocaleString("ja-JP")}円以下`);
+    if (filters.length) {
+      metaText += ` / ${filters.join("・")}: ${json.matched}銘柄が該当`;
     }
     metaLine.textContent = metaText;
     resultsEl.appendChild(metaLine);
@@ -310,11 +318,15 @@ async function runScreen() {
       const changeCls = r.changePct > 0 ? "up" : r.changePct < 0 ? "down" : "flat";
       const card = document.createElement("div");
       card.className = "screen-card";
+      const themeBadges = (r.themes || [])
+        .map((t) => `<span class="theme-badge">${escapeHtml(t)}</span>`)
+        .join("");
       card.innerHTML = `
         <div class="screen-card-head">
           <span class="screen-rank">${idx + 1}</span>
           <span class="card-title">${escapeHtml(r.name)}</span>
           <span class="card-code">${escapeHtml(r.code)}</span>
+          ${themeBadges}
           <span class="signal-badge ${v.cls}">${v.label} (${r.score >= 0 ? "+" : ""}${r.score}点)</span>
           <button class="add-mini" data-add-code="${escapeHtml(r.code)}" data-add-name="${escapeHtml(r.name)}">+ ウォッチ</button>
         </div>
@@ -588,6 +600,33 @@ function setupForm() {
   });
 }
 
+async function setupThemes() {
+  const container = document.getElementById("theme-chips");
+  let themes = [];
+  try {
+    const res = await fetch("/api/themes");
+    themes = (await res.json()).themes || [];
+  } catch {
+    container.textContent = "テーマ一覧を取得できませんでした";
+    return;
+  }
+
+  const chips = [{ key: null, label: "すべて" }, ...themes.map((t) => ({ key: t.key, label: t.label }))];
+  chips.forEach((t) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-chip" + (state.selectedTheme === t.key ? " active" : "");
+    btn.textContent = t.label;
+    btn.addEventListener("click", () => {
+      state.selectedTheme = t.key;
+      container.querySelectorAll(".theme-chip").forEach((c) => c.classList.remove("active"));
+      btn.classList.add("active");
+      runScreen();
+    });
+    container.appendChild(btn);
+  });
+}
+
 let autoRefreshTimer = null;
 function setupActions() {
   document.getElementById("refresh-all").addEventListener("click", refreshAll);
@@ -604,6 +643,7 @@ function setupActions() {
 setupPresets();
 setupForm();
 setupActions();
+setupThemes();
 render();
 if (state.watchlist.length > 0) {
   refreshAll();

@@ -35,7 +35,8 @@ CONTENT_TYPES = {
     ".js": "application/javascript; charset=utf-8",
 }
 
-# スクリーニング対象: 東証の主要・高流動性銘柄(セクター横断で約60社)
+# スクリーニング対象: 東証プライムの大型株に加え、スタンダード・グロースの
+# 中小型・新興銘柄、テーマ関連銘柄を含む(全コードは Yahoo Finance で取得可能なことを検証済み)
 UNIVERSE = [
     ("7203", "トヨタ自動車"), ("7267", "ホンダ"), ("6902", "デンソー"),
     ("6758", "ソニーグループ"), ("6501", "日立製作所"), ("6503", "三菱電機"),
@@ -60,7 +61,70 @@ UNIVERSE = [
     # 2024年1月以降の新規上場銘柄 (英字入り新形式コードを含む)
     ("215A", "タイミー"), ("147A", "ソラコム"), ("268A", "リガクHD"),
     ("9023", "東京メトロ"),
+    # 中小型・新興 (グロース/スタンダード上場のスタートアップ等)
+    ("4385", "メルカリ"), ("3994", "マネーフォワード"), ("4478", "freee"),
+    ("4443", "Sansan"), ("3923", "ラクス"), ("6027", "弁護士ドットコム"),
+    ("5032", "ANYCOLOR"), ("5253", "カバー"),
+    # AI関連
+    ("3993", "PKSHAテクノロジー"), ("5574", "ABEJA"), ("4259", "エクサウィザーズ"),
+    ("4011", "ヘッドウォータース"), ("3778", "さくらインターネット"), ("4751", "サイバーエージェント"),
+    ("6701", "NEC"),
+    # 半導体関連 (大型以外)
+    ("6723", "ルネサスエレクトロニクス"), ("3436", "SUMCO"), ("6963", "ローム"),
+    ("6526", "ソシオネクスト"), ("7735", "SCREENホールディングス"), ("6871", "日本マイクロニクス"),
+    # インフラ・電力
+    ("1801", "大成建設"), ("1802", "大林組"), ("1721", "コムシスHD"),
+    ("1944", "きんでん"), ("1963", "日揮HD"), ("6504", "富士電機"),
+    ("9501", "東京電力HD"), ("9503", "関西電力"), ("9513", "Jパワー"),
+    # 原子力・核融合関連
+    ("5631", "日本製鋼所"), ("6378", "木村化工機"), ("6492", "岡野バルブ製造"),
+    ("7711", "助川電気工業"), ("5310", "東洋炭素"),
+    # 量子コンピュータ関連
+    ("3687", "フィックスターズ"), ("6965", "浜松ホトニクス"), ("6864", "エヌエフHD"),
+    # 宇宙関連
+    ("9348", "ispace"), ("186A", "アストロスケールHD"), ("9412", "スカパーJSAT"),
 ]
+
+# テーマ別の注目銘柄 (2026年7月時点の公開情報に基づく手動キュレーション。
+# テーマとの関連度を保証するものではなく、自動更新もされない)
+THEMES = {
+    "ai": {
+        "label": "AI",
+        "codes": ["3993", "5574", "4259", "4011", "3778", "4751", "9984", "6701", "6702"],
+    },
+    "semiconductor": {
+        "label": "半導体",
+        "codes": ["8035", "6857", "6146", "6920", "285A", "6723", "3436", "4063",
+                   "6963", "6526", "7735", "6871"],
+    },
+    "infra": {
+        "label": "インフラ",
+        "codes": ["1801", "1802", "1721", "1944", "1963", "6504", "5401",
+                   "9501", "9513", "9432", "9433", "9023"],
+    },
+    "nuclear": {
+        "label": "原子力",
+        "codes": ["7011", "6501", "5631", "6378", "6492", "9501", "9503", "1963"],
+    },
+    "quantum": {
+        "label": "量子コンピュータ",
+        "codes": ["3687", "6702", "6701", "9432", "6965", "6864"],
+    },
+    "fusion": {
+        "label": "核融合",
+        "codes": ["7711", "5310", "6965", "7011", "5631", "6378"],
+    },
+    "space": {
+        "label": "宇宙",
+        "codes": ["9348", "186A", "9412", "7011", "7012"],
+    },
+}
+
+# code -> [テーマ名] の逆引き (結果カードのテーマバッジ表示用)
+CODE_THEMES: dict[str, list[str]] = {}
+for _theme in THEMES.values():
+    for _code in _theme["codes"]:
+        CODE_THEMES.setdefault(_code, []).append(_theme["label"])
 
 
 def fetch_chart(symbol: str, rng: str, interval: str) -> bytes:
@@ -239,13 +303,14 @@ def build_screen_results() -> dict:
                 "name": name,
                 "price": closes[-1],
                 "changePct": (closes[-1] - prev) / prev * 100,
+                "themes": CODE_THEMES.get(code, []),
                 **ev,
             }
         except Exception:
             return None
 
     results = []
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         for res in executor.map(work, UNIVERSE):
             if res is not None:
                 results.append(res)
@@ -258,7 +323,7 @@ def build_screen_results() -> dict:
     }
 
 
-def get_screen(max_price: float | None) -> bytes:
+def get_screen(max_price: float | None, theme: str | None) -> bytes:
     global _screen_cache
     with _screen_lock:
         now = time.time()
@@ -269,15 +334,24 @@ def get_screen(max_price: float | None) -> bytes:
             _screen_cache = (now, data)
 
     results = data["results"]
+    theme_label = None
+    if theme is not None:
+        theme_codes = set(THEMES[theme]["codes"])
+        theme_label = THEMES[theme]["label"]
+        results = [r for r in results if r["code"] in theme_codes]
     if max_price is not None:
         results = [r for r in results if r["price"] <= max_price]
+    # テーマ指定時は「テーマ内の注目銘柄を挙げる」のが目的なので多めに返す
+    limit = 12 if theme is not None else 8
     payload = {
         "generatedAt": data["generatedAt"],
         "scanned": data["scanned"],
         "succeeded": data["succeeded"],
         "maxPrice": max_price,
+        "theme": theme,
+        "themeLabel": theme_label,
         "matched": len(results),
-        "top": results[:8],
+        "top": results[:limit],
     }
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
@@ -293,6 +367,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/screen":
             self.handle_screen(parsed)
+            return
+        if parsed.path == "/api/themes":
+            self.respond_json(200, {
+                "themes": [{"key": k, "label": v["label"]} for k, v in THEMES.items()],
+            })
             return
         self.serve_static(parsed.path)
 
@@ -333,8 +412,12 @@ class Handler(BaseHTTPRequestHandler):
             if max_price <= 0:
                 self.respond_json(400, {"error": "maxPrice must be positive"})
                 return
+        theme = query.get("theme", [None])[0]
+        if theme is not None and theme not in THEMES:
+            self.respond_json(400, {"error": f"unknown theme: {theme}"})
+            return
         try:
-            data = get_screen(max_price)
+            data = get_screen(max_price, theme)
         except Exception as e:
             self.respond_json(502, {"error": str(e)})
             return
