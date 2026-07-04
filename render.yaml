@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: jp-stock-signal
+    runtime: python
+    plan: free
+    buildCommand: "true"
+    startCommand: "python server.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"

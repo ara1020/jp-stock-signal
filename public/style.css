@@ -1,0 +1,271 @@
+:root {
+  --bg: #0f1115;
+  --card-bg: #1a1d24;
+  --border: #2a2e38;
+  --text: #e6e8ec;
+  --text-dim: #9aa0ac;
+  --up: #e6484f;   /* 日本の慣習: 上昇=赤 */
+  --down: #3d8bfd; /* 下落=青 */
+  --neutral: #9aa0ac;
+  --buy: #2fbf71;
+  --sell: #e6484f;
+  --watch: #d7a13b;
+  --accent: #7c6cf0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 20px 40px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+
+header {
+  padding: 32px 0 12px;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.controls {
+  max-width: 900px;
+  margin: 24px auto 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+#add-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#add-form input {
+  flex: 1;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #12141a;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+#add-form button {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#add-form button:hover { opacity: 0.9; }
+
+.presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.preset-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #12141a;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.preset-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.actions button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #12141a;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.actions button:hover { border-color: var(--accent); }
+
+.auto-refresh-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#watchlist {
+  max-width: 900px;
+  margin: 20px auto;
+  display: grid;
+  gap: 14px;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-dim);
+  max-width: 900px;
+  margin: 40px auto;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.card-code {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-left: 6px;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1rem;
+}
+.remove-btn:hover { color: var(--sell); }
+
+.price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.price {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.change.up { color: var(--up); }
+.change.down { color: var(--down); }
+.change.flat { color: var(--neutral); }
+
+.metrics-row {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.metric strong { color: var(--text); }
+
+.signal-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-top: 10px;
+}
+
+.signal-buy { background: rgba(47,191,113,0.15); color: var(--buy); }
+.signal-sell { background: rgba(230,72,79,0.15); color: var(--sell); }
+.signal-watch-buy, .signal-watch-sell { background: rgba(215,161,59,0.15); color: var(--watch); }
+.signal-neutral { background: rgba(154,160,172,0.15); color: var(--neutral); }
+.signal-error { background: rgba(230,72,79,0.15); color: var(--sell); }
+.signal-loading { background: rgba(124,108,240,0.15); color: var(--accent); }
+
+.expand-toggle {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0;
+}
+
+.chart-wrap {
+  margin-top: 10px;
+  display: none;
+}
+.chart-wrap.open { display: block; }
+
+.chart-wrap canvas {
+  width: 100%;
+  height: 220px;
+  display: block;
+  background: #12141a;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.chart-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.legend-price::before { background: #e6e8ec; }
+.legend-sma5::before { background: #f0a83c; }
+.legend-sma25::before { background: #7c6cf0; }
+
+footer {
+  max-width: 900px;
+  margin: 30px auto 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-align: center;
+  line-height: 1.5;
+}

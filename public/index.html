@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日本株シグナルウォッチャー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📈 日本株シグナルウォッチャー</h1>
+  <p class="subtitle">ゴールデンクロス／デッドクロス × RSI を組み合わせて売買サインをチェックします</p>
+</header>
+
+<section class="controls">
+  <form id="add-form">
+    <input id="code-input" type="text" placeholder="銘柄コード (例: 7203)" maxlength="4" inputmode="numeric" required>
+    <input id="name-input" type="text" placeholder="銘柄名 (任意)">
+    <button type="submit">追加</button>
+  </form>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="actions">
+    <button id="refresh-all" type="button">🔄 すべて更新</button>
+    <label class="auto-refresh-label">
+      <input type="checkbox" id="auto-refresh"> 60秒ごとに自動更新
+    </label>
+    <span id="last-updated"></span>
+  </div>
+</section>
+
+<main id="watchlist"></main>
+
+<p id="empty-state" class="empty-state">まだ銘柄が登録されていません。上のプリセットから追加するか、銘柄コードを入力してください。</p>
+
+<footer>
+  <p>データ提供: Yahoo Finance (遅延あり)。シグナルは単純な移動平均クロス + RSI による機械的な目安であり、投資助言ではありません。投資判断は自己責任でお願いします。</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
