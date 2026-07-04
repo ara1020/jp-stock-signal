@@ -126,6 +126,116 @@ header h1 {
   gap: 6px;
 }
 
+.screener {
+  max-width: 900px;
+  margin: 14px auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.screener-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.screener-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+#run-screen {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+#run-screen:hover { opacity: 0.9; }
+#run-screen:disabled { opacity: 0.5; cursor: wait; }
+
+.screener-note {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  margin: 10px 0 0;
+}
+
+.screen-meta {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin: 14px 0 4px;
+}
+
+.screen-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  background: #12141a;
+}
+
+.screen-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.screen-card-head .signal-badge { margin-top: 0; }
+
+.screen-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.add-mini {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.add-mini:hover { color: var(--text); border-color: var(--accent); }
+
+.reasons {
+  margin-top: 10px;
+  font-size: 0.82rem;
+}
+
+.reasons summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.reasons-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.reasons-list li { margin-bottom: 2px; }
+
 #watchlist {
   max-width: 900px;
   margin: 20px auto;

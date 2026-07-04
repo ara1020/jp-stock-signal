@@ -14,7 +14,7 @@
 
 <section class="controls">
   <form id="add-form">
-    <input id="code-input" type="text" placeholder="銘柄コード (例: 7203)" maxlength="4" inputmode="numeric" required>
+    <input id="code-input" type="text" placeholder="銘柄コード (例: 7203, 285A)" maxlength="4" required>
     <input id="name-input" type="text" placeholder="銘柄名 (任意)">
     <button type="submit">追加</button>
   </form>
@@ -30,12 +30,26 @@
   </div>
 </section>
 
+<section class="screener">
+  <div class="screener-head">
+    <h2>🔎 いま買い候補の株スクリーニング</h2>
+    <button id="run-screen" type="button">🔎 スクリーニング実行</button>
+  </div>
+  <p class="screener-note">
+    東証の主要約60銘柄を、代表的なテクニカル分析のセオリー
+    (ダウ理論のトレンドフォロー、ゴールデンクロス、ワイルダーのRSI、モメンタム効果、出来高分析、
+    オニールの高値ブレイクアウト、グランビルの法則)に基づく透明なルールで機械的に採点し、上位8銘柄を根拠付きで表示します。
+    業績・割安度などのファンダメンタルズやニュースは考慮していません。
+  </p>
+  <div id="screen-results"></div>
+</section>
+
 <main id="watchlist"></main>
 
 <p id="empty-state" class="empty-state">まだ銘柄が登録されていません。上のプリセットから追加するか、銘柄コードを入力してください。</p>
 
 <footer>
-  <p>データ提供: Yahoo Finance (遅延あり)。シグナルは単純な移動平均クロス + RSI による機械的な目安であり、投資助言ではありません。投資判断は自己責任でお願いします。</p>
+  <p>データ提供: Yahoo Finance (遅延あり)。シグナルとスクリーニングは公開されたテクニカル指標による機械的な採点であり、投資助言ではありません。将来の値動きを保証するものでもありません。投資判断は自己責任でお願いします。</p>
 </footer>
 
 <script src="app.js"></script>

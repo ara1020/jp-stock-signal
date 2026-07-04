@@ -3,13 +3,18 @@
 静的ファイル配信と Yahoo Finance API へのプロキシを行う。
 ブラウザから直接 Yahoo Finance を叩くと CORS で弾かれるため、
 同一オリジンのこのサーバーを経由させることで回避している。
+
+/api/screen は主要銘柄をテクニカル指標で機械的に採点するスクリーナー。
+採点ロジックは public/app.js の evaluate() と同一ルール(表示用に両実装)。
 """
 import json
 import os
+import threading
 import time
 import urllib.request
 import urllib.parse
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -17,15 +22,42 @@ HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8787))
 PUBLIC_DIR = (Path(__file__).parent / "public").resolve()
 CACHE_TTL_SECONDS = 30
+SCREEN_TTL_SECONDS = 900
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
 _cache: dict[tuple[str, str, str], tuple[float, bytes]] = {}
+_screen_lock = threading.Lock()
+_screen_cache: tuple[float, bytes] | None = None
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
 }
+
+# スクリーニング対象: 東証の主要・高流動性銘柄(セクター横断で約60社)
+UNIVERSE = [
+    ("7203", "トヨタ自動車"), ("7267", "ホンダ"), ("6902", "デンソー"),
+    ("6758", "ソニーグループ"), ("6501", "日立製作所"), ("6503", "三菱電機"),
+    ("6752", "パナソニックHD"), ("6702", "富士通"), ("6981", "村田製作所"),
+    ("6861", "キーエンス"), ("6954", "ファナック"), ("6273", "SMC"),
+    ("6367", "ダイキン工業"), ("8035", "東京エレクトロン"), ("6857", "アドバンテスト"),
+    ("6146", "ディスコ"), ("6920", "レーザーテック"), ("285A", "キオクシアHD"),
+    ("4063", "信越化学工業"), ("4901", "富士フイルムHD"), ("4452", "花王"),
+    ("2802", "味の素"), ("2914", "JT"), ("4502", "武田薬品工業"),
+    ("4568", "第一三共"), ("4519", "中外製薬"), ("9984", "ソフトバンクグループ"),
+    ("9434", "ソフトバンク"), ("9432", "NTT"), ("9433", "KDDI"),
+    ("4755", "楽天グループ"), ("4689", "LINEヤフー"), ("6098", "リクルートHD"),
+    ("9983", "ファーストリテイリング"), ("3382", "セブン&アイHD"), ("8267", "イオン"),
+    ("8306", "三菱UFJ FG"), ("8316", "三井住友FG"), ("8411", "みずほFG"),
+    ("8766", "東京海上HD"), ("8591", "オリックス"), ("8058", "三菱商事"),
+    ("8001", "伊藤忠商事"), ("8031", "三井物産"), ("8053", "住友商事"),
+    ("7974", "任天堂"), ("9766", "コナミグループ"), ("7832", "バンダイナムコHD"),
+    ("4661", "オリエンタルランド"), ("9020", "JR東日本"), ("9022", "JR東海"),
+    ("9101", "日本郵船"), ("9104", "商船三井"), ("5401", "日本製鉄"),
+    ("7011", "三菱重工業"), ("7012", "川崎重工業"), ("7013", "IHI"),
+    ("8801", "三井不動産"), ("8802", "三菱地所"), ("7741", "HOYA"),
+]
 
 
 def fetch_chart(symbol: str, rng: str, interval: str) -> bytes:
@@ -45,6 +77,196 @@ def fetch_chart(symbol: str, rng: str, interval: str) -> bytes:
     return data
 
 
+# ---------- テクニカル指標とスコアリング ----------
+
+def compute_sma(closes: list[float], period: int) -> list:
+    out = [None] * len(closes)
+    total = 0.0
+    for i, c in enumerate(closes):
+        total += c
+        if i >= period:
+            total -= closes[i - period]
+        if i >= period - 1:
+            out[i] = total / period
+    return out
+
+
+def compute_rsi(closes: list[float], period: int = 14) -> list:
+    out = [None] * len(closes)
+    if len(closes) <= period:
+        return out
+    gain_sum = 0.0
+    loss_sum = 0.0
+    for i in range(1, period + 1):
+        diff = closes[i] - closes[i - 1]
+        if diff >= 0:
+            gain_sum += diff
+        else:
+            loss_sum -= diff
+    avg_gain = gain_sum / period
+    avg_loss = loss_sum / period
+    out[period] = 100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss)
+    for i in range(period + 1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gain = diff if diff > 0 else 0.0
+        loss = -diff if diff < 0 else 0.0
+        avg_gain = (avg_gain * (period - 1) + gain) / period
+        avg_loss = (avg_loss * (period - 1) + loss) / period
+        out[i] = 100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss)
+    return out
+
+
+def evaluate(closes: list[float], volumes: list[float]) -> dict:
+    """public/app.js の evaluate() と同一ルール。変更時は両方を更新すること。"""
+    n = len(closes)
+    last = n - 1
+    price = closes[last]
+    sma5 = compute_sma(closes, 5)
+    sma25 = compute_sma(closes, 25)
+    rsi14 = compute_rsi(closes, 14)
+    rsi = rsi14[last]
+
+    score = 0
+    reasons = []
+
+    # 1) トレンド (ダウ理論 / トレンドフォロー)
+    s25 = sma25[last]
+    s25p = sma25[last - 5] if last >= 5 else None
+    slope_up = s25 is not None and s25p is not None and s25 > s25p
+    slope_down = s25 is not None and s25p is not None and s25 < s25p
+    if s25 is not None and price > s25 and slope_up:
+        score += 2
+        reasons.append("+2 株価が25日線の上で推移し25日線も上向き — 上昇トレンド継続(ダウ理論/トレンドフォロー)")
+    elif s25 is not None and price < s25 and slope_down:
+        score -= 2
+        reasons.append("-2 株価が25日線の下で推移し25日線も下向き — 下降トレンド(ダウ理論)")
+
+    # 2) 直近5営業日以内の移動平均クロス
+    cross = "none"
+    i = last
+    while i > max(last - 5, 0):
+        if all(v is not None for v in (sma5[i], sma25[i], sma5[i - 1], sma25[i - 1])):
+            d0 = sma5[i - 1] - sma25[i - 1]
+            d1 = sma5[i] - sma25[i]
+            if d0 <= 0 and d1 > 0:
+                cross = "golden"
+                break
+            if d0 >= 0 and d1 < 0:
+                cross = "dead"
+                break
+        i -= 1
+    if cross == "golden":
+        score += 2
+        reasons.append("+2 直近5営業日以内にゴールデンクロス発生 — 上昇転換シグナル")
+    elif cross == "dead":
+        score -= 2
+        reasons.append("-2 直近5営業日以内にデッドクロス発生 — 下落転換シグナル")
+
+    # 3) RSI (ワイルダー)
+    if rsi is not None:
+        if rsi >= 70:
+            score -= 2
+            reasons.append(f"-2 RSI {rsi:.0f} は買われすぎ圏(70以上) — 高値掴みリスク(ワイルダーのRSI)")
+        elif rsi <= 30:
+            score += 1
+            reasons.append(f"+1 RSI {rsi:.0f} は売られすぎ圏(30以下) — 逆張りの反発候補(ただし下落継続リスクあり)")
+        elif 50 <= rsi < 70 and slope_up:
+            score += 1
+            reasons.append(f"+1 RSI {rsi:.0f} は上昇トレンド中の適温圏(50〜70) — 過熱前で上昇余地")
+
+    # 4) モメンタム効果 (直近25営業日リターン)
+    if n > 25:
+        mom = price / closes[-26] - 1
+        if mom > 0.05:
+            score += 1
+            reasons.append(f"+1 直近25営業日で{mom * 100:+.1f}% — 上昇モメンタム(モメンタム効果)")
+        elif mom < -0.10:
+            score -= 1
+            reasons.append(f"-1 直近25営業日で{mom * 100:+.1f}% — 下落モメンタムが強い")
+
+    # 5) 出来高 (出来高はトレンドの信頼度を裏付ける)
+    vols = [v for v in volumes if v]
+    if len(volumes) >= 25:
+        v5 = [v for v in volumes[-5:] if v]
+        v25 = [v for v in volumes[-25:] if v]
+        if v5 and v25:
+            ratio = (sum(v5) / len(v5)) / (sum(v25) / len(v25))
+            if ratio > 1.3:
+                score += 1
+                reasons.append(f"+1 直近5日の出来高が25日平均の{ratio:.1f}倍に増加 — トレンドの信頼度を補強(出来高分析)")
+
+    # 6) 高値ブレイクアウト (オニール)
+    if price >= max(closes) * 0.97:
+        score += 1
+        reasons.append("+1 直近6ヶ月の高値圏(97%以上)に接近 — 新高値ブレイクアウト候補(オニール)")
+
+    # 7) 移動平均乖離 (グランビルの法則)
+    if s25 is not None:
+        dev = price / s25 - 1
+        if dev > 0.08:
+            score -= 1
+            reasons.append(f"-1 25日線から{dev * 100:+.1f}%の上方乖離 — 短期過熱、押し目待ちが定石(グランビルの法則)")
+
+    return {"score": score, "reasons": reasons, "rsi": rsi}
+
+
+def build_screen_payload() -> bytes:
+    def work(item):
+        code, name = item
+        try:
+            raw = fetch_chart(f"{code}.T", "6mo", "1d")
+            data = json.loads(raw)
+            result = data["chart"]["result"][0]
+            quote = result["indicators"]["quote"][0]
+            closes_raw = quote.get("close") or []
+            vols_raw = quote.get("volume") or []
+            closes = []
+            volumes = []
+            for i, c in enumerate(closes_raw):
+                if c is not None:
+                    closes.append(c)
+                    v = vols_raw[i] if i < len(vols_raw) else None
+                    volumes.append(v if v else 0)
+            if len(closes) < 60:
+                return None
+            ev = evaluate(closes, volumes)
+            prev = closes[-2]
+            return {
+                "code": code,
+                "name": name,
+                "price": closes[-1],
+                "changePct": (closes[-1] - prev) / prev * 100,
+                **ev,
+            }
+        except Exception:
+            return None
+
+    results = []
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        for res in executor.map(work, UNIVERSE):
+            if res is not None:
+                results.append(res)
+    results.sort(key=lambda r: r["score"], reverse=True)
+    payload = {
+        "generatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "scanned": len(UNIVERSE),
+        "succeeded": len(results),
+        "top": results[:8],
+    }
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def get_screen() -> bytes:
+    global _screen_cache
+    with _screen_lock:
+        now = time.time()
+        if _screen_cache and now - _screen_cache[0] < SCREEN_TTL_SECONDS:
+            return _screen_cache[1]
+        data = build_screen_payload()
+        _screen_cache = (now, data)
+        return data
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 - silence default logging
         pass
@@ -53,6 +275,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/chart":
             self.handle_chart(parsed)
+            return
+        if parsed.path == "/api/screen":
+            self.handle_screen()
             return
         self.serve_static(parsed.path)
 
@@ -80,6 +305,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def handle_screen(self):
+        try:
+            data = get_screen()
+        except Exception as e:
+            self.respond_json(502, {"error": str(e)})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(data)
+
     def serve_static(self, path: str):
         if path == "/":
             path = "/index.html"
@@ -102,7 +338,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.end_headers()
-        self.wfile.write(json.dumps(payload).encode("utf-8"))
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
 
 if __name__ == "__main__":
